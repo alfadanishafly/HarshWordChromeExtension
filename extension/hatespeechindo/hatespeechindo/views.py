@@ -35,8 +35,8 @@ def check_hatespeech(request):
 
 def check_with_machine_learning(text):
     # Load the model from the model.pkl file
-    model = joblib.load('D:\KULIAH !!!!\SEMESTER 6\ML\Hate Speech Extension V.1\extension\hatespeechindo\hatespeechindo\Hate Speech Classifier.joblib')
-    vectorize_model = joblib.load('D:\KULIAH !!!!\SEMESTER 6\ML\Hate Speech Extension V.1\extension\hatespeechindo\hatespeechindo\Hate Speech TF-IDF Vectorizer.joblib')
+    model = joblib.load('Hate Speech Classifier.joblib')
+    vectorize_model = joblib.load('Hate Speech TF-IDF Vectorizer.joblib')
 
     # Preprocess the text
     processed_text = preprocess_text(text)

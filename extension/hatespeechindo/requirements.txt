@@ -1,0 +1,13 @@
+django
+gunicorn
+psycopg2-binary
+django-dotenv
+django-htmx
+pint
+django-storages
+boto3
+pillow
+requests
+nltk
+scikit-learn
+django-cors-headers
