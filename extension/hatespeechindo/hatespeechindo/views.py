@@ -1,75 +1,134 @@
+"""
+Hate Speech Detection API Views
+
+This module provides endpoints for hate speech detection using machine learning models.
+"""
+import json
+import logging
+import os
+from pathlib import Path
+
+import joblib
+import nltk
+import re
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
-import nltk
-import requests
+from django.conf import settings
 from nltk.corpus import stopwords
 from nltk.tokenize import word_tokenize
-import logging
-import nltk
-import requests
-import re
-import joblib
-from sklearn.feature_extraction.text import TfidfVectorizer
 
 logger = logging.getLogger(__name__)
 
+# Ensure NLTK data is downloaded
+try:
+    stopwords.words('indonesian')
+except LookupError:
+    nltk.download('stopwords', quiet=True)
+    nltk.download('punkt', quiet=True)
+
+
 @csrf_exempt
 def check_hatespeech(request):
+    """
+    Check if the provided text contains hate speech.
+    
+    Args:
+        request: Django HTTP request object
+        
+    Returns:
+        JsonResponse with 'is_hatespeech' boolean or error message
+    """
     if request.method == 'POST':
-        # Extract the raw request body
-        raw_body = request.body.decode('utf-8')
-
-        # Print the raw request body
-        print("request.body:", raw_body)
-
-        # Use machine learning model to check for hate speech words
-        is_hatespeech = check_with_machine_learning(raw_body)
-        logger.info("is_hatespeech: %s", is_hatespeech)
-
-        # Return JSON response with the checking result
-        return JsonResponse({'is_hatespeech': is_hatespeech})
-
-    # Return error response if there is an issue with the request
-    return JsonResponse({'error': 'Invalid request'})
+        try:
+            # Try to parse JSON body first (for Chrome extension compatibility)
+            try:
+                request_data = json.loads(request.body.decode('utf-8'))
+                text = request_data.get('text', '')
+            except (json.JSONDecodeError, UnicodeDecodeError):
+                # Fallback to form data
+                text = request.POST.get('text', '')
+            
+            if not text:
+                return JsonResponse({'error': 'No text provided'}, status=400)
+            
+            # Use machine learning model to check for hate speech
+            is_hatespeech = check_with_machine_learning(text)
+            logger.info("Hate speech detection result: %s", is_hatespeech)
+            
+            return JsonResponse({'is_hatespeech': is_hatespeech})
+            
+        except Exception as e:
+            logger.error("Error processing hate speech detection: %s", str(e))
+            return JsonResponse({'error': f'Processing error: {str(e)}'}, status=500)
+    
+    return JsonResponse({'error': 'Invalid request method. Use POST.'}, status=405)
 
 
 def check_with_machine_learning(text):
-    # Load the model from the model.pkl file
-    model = joblib.load('D:\KULIAH !!!!\SEMESTER 6\ML\Hate Speech Extension V.1\extension\hatespeechindo\hatespeechindo\Hate Speech Classifier.joblib')
-    vectorize_model = joblib.load('D:\KULIAH !!!!\SEMESTER 6\ML\Hate Speech Extension V.1\extension\hatespeechindo\hatespeechindo\Hate Speech TF-IDF Vectorizer.joblib')
-
-    # Preprocess the text
-    processed_text = preprocess_text(text)
-    logger.info("Processed Text: %s", processed_text)
-    print("Processed Text:", processed_text)
-
-    # Vectorize the text
-    vectorized_text = vectorize_model.transform([processed_text])
-
-    # Perform prediction using the model
-    prediction = model.predict(vectorized_text)
-    logger.info("Prediction: %s", prediction)
-    print("Prediction:", prediction)
-
-    # If the prediction indicates hate speech words, return True; otherwise, return False
-    return bool(prediction[0])
+    """
+    Load ML models and predict if text contains hate speech.
+    
+    Args:
+        text: Input text to analyze
+        
+    Returns:
+        bool: True if hate speech detected, False otherwise
+    """
+    try:
+        # Load models using paths from settings
+        model_path = getattr(settings, 'MODEL_PATH', None)
+        vectorizer_path = getattr(settings, 'VECTORIZER_PATH', None)
+        
+        if not model_path or not vectorizer_path:
+            # Fallback to default paths in BASE_DIR
+            base_dir = settings.BASE_DIR
+            model_path = base_dir / 'Hate Speech Classifier.joblib'
+            vectorizer_path = base_dir / 'Hate Speech TF-IDF Vectorizer.joblib'
+        
+        model = joblib.load(model_path)
+        vectorizer = joblib.load(vectorizer_path)
+        
+        # Preprocess the text
+        processed_text = preprocess_text(text)
+        logger.debug("Processed text: %s", processed_text)
+        
+        # Vectorize and predict
+        vectorized_text = vectorizer.transform([processed_text])
+        prediction = model.predict(vectorized_text)
+        
+        logger.debug("Prediction: %s", prediction)
+        return bool(prediction[0])
+        
+    except FileNotFoundError as e:
+        logger.error("Model file not found: %s", str(e))
+        raise
+    except Exception as e:
+        logger.error("Prediction error: %s", str(e))
+        raise
 
 
 def preprocess_text(text):
+    """
+    Clean and preprocess text for ML model input.
+    
+    Args:
+        text: Raw input text
+        
+    Returns:
+        str: Processed and cleaned text
+    """
     # Remove special characters except spaces, numbers, and alphabets
     processed_text = re.sub(r'[^a-zA-Z0-9\s]', '', text)
-
-    # Tokenize the text
+    
+    # Tokenize
     tokens = word_tokenize(processed_text)
-
-    # Remove stopwords
+    
+    # Remove Indonesian stopwords
     stop_words = set(stopwords.words('indonesian'))
     filtered_tokens = [word for word in tokens if word.lower() not in stop_words]
-
-    # Convert all words to lowercase
+    
+    # Convert to lowercase
     lowercase_tokens = [word.lower() for word in filtered_tokens]
-
-    # Join the processed tokens back into text
-    processed_text = ' '.join(lowercase_tokens)
-
-    return processed_text
+    
+    # Join back into text
+    return ' '.join(lowercase_tokens)
